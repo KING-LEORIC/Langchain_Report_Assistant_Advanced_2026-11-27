@@ -69,7 +69,14 @@ def validate_structured_answer(
             source_ids=[],
             status_report_ids=[],
         )
-
+    # 근거 부족 상태에서는 어떠한 출처 ID도 남기지 않아 거짓 인용 차단
+    if answer.status != "completed":
+        return StructuredModelAnswer(
+            status="insufficient_evidence",
+            answer=answer.answer,
+            source_ids=[],
+            status_report_ids=answer.status_report_ids,
+        )
     return answer
 
 
