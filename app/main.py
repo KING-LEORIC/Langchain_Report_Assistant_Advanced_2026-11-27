@@ -77,13 +77,21 @@ async def handle_validation_error(
 ) -> JSONResponse:
     """FastAPI 기본 422 검증 오류를 표준 VALIDATION_ERROR 포맷으로 통일."""
     request_id = getattr(request.state, "request_id", None) or generate_request_id()
-    # 내부 스택 트레이스 노출을 막고 검증 실패 필드 목록만 detail에 포함
+    # exc.errors() 내부에 포함된 Python ValueError 객체를 문자열로 안전 변환해 500 직렬화 오류 방지
+    safe_errors = [
+        {
+            "loc": list(err.get("loc", ())),
+            "msg": str(err.get("msg", "")),
+            "type": str(err.get("type", "")),
+        }
+        for err in exc.errors()
+    ]
     body = ErrorResponse(
         error=ErrorDetail(
             code="VALIDATION_ERROR",
             message="요청 입력값 검증 실패",
             request_id=request_id,
-            detail={"errors": exc.errors()},
+            detail={"errors": safe_errors},
         )
     )
     return JSONResponse(status_code=422, content=body.model_dump())
