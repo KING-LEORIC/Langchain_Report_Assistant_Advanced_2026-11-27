@@ -74,9 +74,18 @@ def evaluate_retrieval(
 
     for case in cases:
         case_id = case.get("id", "")
-        query = case.get("query", "")
+        # gold.json 스키마 변형(query 또는 question)에 모두 대응하고 빈 케이스는 건너뜀
+        query = (case.get("query") or case.get("question") or "").strip()
+        if not query:
+            continue
         category_code = case.get("category_code")
-        expected_ids = {int(x) for x in case.get("expected_report_ids", [])}
+        raw_expected = (
+            case.get("expected_report_ids")
+            or case.get("expected_ids")
+            or case.get("gold_report_ids")
+            or []
+        )
+        expected_ids = {int(x) for x in raw_expected}
 
         before_candidates = retriever.retrieve(query=query, category_code=category_code)
         after_candidates = (
