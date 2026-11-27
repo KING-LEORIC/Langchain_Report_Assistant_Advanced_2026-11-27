@@ -60,17 +60,18 @@ class ReportRepository:
         # 미존재 ID일 경우 None을 반환하여 도구 계층에서 명시적 미발견 응답 처리
         return dict(row) if row else None
 
-    def search_vector_candidates(
-        self, query_embedding: list[float], category_code: str | None = None, k: int = 8
-    ) -> list[dict[str, Any]]:
-        """FRESH 조건을 만족하는 벡터만 대상으로 코사인 유사도 상위 k건 검색."""
-        # pgvector 문자열 리터럴 포맷으로 직렬화하여 파라미터 바인딩
-        vec_literal = "[" + ",".join(f"{v:.8f}" for v in query_embedding) + "]"
 
-        sql = """
+def search_vector_candidates(
+    self, query_embedding: list[float], category_code: str | None = None, k: int = 8
+) -> list[dict[str, Any]]:
+    """FRESH 조건을 만족하는 벡터만 대상으로 코사인 유사도 상위 k건 검색."""
+    # pgvector 문자열 리터럴 포맷으로 직렬화하여 파라미터 바인딩
+    vec_literal = "[" + ",".join(f"{v:.8f}" for v in query_embedding) + "]"
+
+    # reports 테이블에 category_code가 없으므로 기본키·요약만 조회하고 필터 시에만 뷰 참조
+    sql = """
             SELECT
                 r.report_id,
-                r.category_code,
                 r.overview,
                 1 - (e.embedding <=> %(vec)s::vector) AS similarity
             FROM reports r
@@ -81,40 +82,45 @@ class ReportRepository:
               AND vector_dims(e.embedding) = 384
               AND vector_norm(e.embedding) > 0
               AND e.overview_hash = encode(sha256(convert_to(r.overview, 'UTF8')), 'hex')
-              AND (%(category_code)s::text IS NULL OR r.category_code = %(category_code)s)
+              AND (
+                  %(category_code)s::text IS NULL
+                  OR EXISTS (
+                      SELECT 1
+                      FROM report_read_view v
+                      WHERE v.report_id = r.report_id
+                        AND v.category_code = %(category_code)s
+                  )
+              )
             ORDER BY e.embedding <=> %(vec)s::vector ASC
             LIMIT %(limit)s
         """
-        params = {
-            "vec": vec_literal,
-            "model_name": self._settings.embedding_model,
-            "category_code": category_code,
-            "limit": int(k),
-        }
-        with get_readonly_connection(self._settings) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
-        return [dict(row) for row in rows]
+    params = {
+        "vec": vec_literal,
+        "model_name": self._settings.embedding_model,
+        "category_code": category_code,
+        "limit": int(k),
+    }
+    with get_readonly_connection(self._settings) as conn, conn.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]
 
-    def fetch_report_details_by_ids(
-        self, report_ids: list[int]
-    ) -> list[dict[str, Any]]:
-        """report_read_view에서 선택된 보고서 ID 목록의 전체 상세 본문 조회."""
-        # 빈 목록 조회 시 불필요한 DB 왕복 차단
-        if not report_ids:
-            return []
 
-        sql = """
+def fetch_report_details_by_ids(self, report_ids: list[int]) -> list[dict[str, Any]]:
+    """report_read_view에서 선택된 보고서 ID 목록의 전체 상세 본문 조회."""
+    # 빈 목록 조회 시 불필요한 DB 왕복 차단
+    if not report_ids:
+        return []
+
+    sql = """
             SELECT *
             FROM report_read_view
             WHERE report_id = ANY(%(report_ids)s)
         """
-        with get_readonly_connection(self._settings) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, {"report_ids": report_ids})
-                rows = cur.fetchall()
-        return [dict(row) for row in rows]
+    with get_readonly_connection(self._settings) as conn, conn.cursor() as cur:
+        cur.execute(sql, {"report_ids": report_ids})
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]
 
 
 """
