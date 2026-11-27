@@ -37,7 +37,7 @@ class ReportRepository:
                       AND e.overview_hash = encode(sha256(convert_to(r.overview, 'UTF8')), 'hex')
                 ) AS fresh_vectors
             FROM reports r
-            LEFT JOIN report_embeddings e ON e.report_id = r.id
+            LEFT JOIN report_embeddings e ON e.report_id = r.report_id
         """
         with get_readonly_connection(self._settings) as conn:
             with conn.cursor() as cur:
@@ -49,7 +49,7 @@ class ReportRepository:
         """단일 보고서 ID에 대한 상태·리비전·카테고리 메타데이터 조회."""
         sql = """
             SELECT
-                r.id AS report_id,
+                r.report_id,
                 r.title,
                 r.category_code,
                 r.status,
@@ -57,7 +57,7 @@ class ReportRepository:
                 r.revision,
                 r.updated_at
             FROM reports r
-            WHERE r.id = %(report_id)s
+            WHERE r.report_id = %(report_id)s
         """
         with get_readonly_connection(self._settings) as conn:
             with conn.cursor() as cur:
@@ -75,14 +75,14 @@ class ReportRepository:
 
         sql = """
             SELECT
-                r.id AS report_id,
+                r.report_id,
                 r.title,
                 r.category_code,
                 r.status,
                 r.overview,
                 1 - (e.embedding <=> %(vec)s::vector) AS similarity
             FROM reports r
-            JOIN report_embeddings e ON e.report_id = r.id
+            JOIN report_embeddings e ON e.report_id = r.report_id
             WHERE r.index_status = 'ready'
               AND e.model_name = %(model_name)s
               AND e.indexed_revision = r.revision
@@ -127,6 +127,6 @@ class ReportRepository:
 
 """
 [설계 평가]
-- 모든 벡터 검색에 6중 FRESH 조건을 SQL 수준에서 강제해 오래된 임베딩 오염 차단.
-- 파라미터 바인딩으로 SQL 인젝션을 방지하고 report_read_view를 통해 6개 카테고리 본문 통합 조회.
+- reports 테이블 기본키(r.report_id)를 모든 조인·필터 절에 일관 적용해 컬럼 불일치 제거.
+- 6중 FRESH 벡터 조건과 READ ONLY 트랜잭션을 유지해 검색 안전성 확보.
 """
