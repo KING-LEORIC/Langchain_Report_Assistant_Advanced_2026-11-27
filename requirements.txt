@@ -1,5 +1,6 @@
-# 기존 정상 CUDA PyTorch 설치를 유지한다. 새 venv라면 CUDA용 torch를 먼저 설치한다.
-# CPU torch가 설치된 경우 common/README_START.md의 GPU 복구 절차를 따른다.
+# 기존 정상 CUDA PyTorch 설치를 유지한다. 새 venv(NVIDIA GPU)라면 CUDA용 torch를 먼저 설치한다.
+# 비-CUDA PC(예: AMD 7840U/780M)에서는 일반 설치(CPU torch) 후 .env에 ALLOW_CPU_FALLBACK=true를 설정한다.
+# CPU torch가 설치된 CUDA PC의 경우 common/README_START.md의 GPU 복구 절차를 따른다.
 # 아래는 호환 API 범위이며 Windows/CUDA 실측 lockfile은 아니다. 설치 후 pip check + preflight 필수.
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
@@ -9,6 +10,7 @@ pgvector>=0.4,<1
 pydantic>=2.9,<3
 python-dotenv>=1.0,<2
 sentence-transformers>=3.0,<7
+transformers>=4.45,<6
 langchain>=1.0,<2
 langchain-openai>=1.0,<2
 pytest>=8,<10
