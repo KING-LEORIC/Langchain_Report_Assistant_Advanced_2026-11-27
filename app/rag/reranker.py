@@ -3,7 +3,7 @@
 from typing import Any
 
 # CUDA GPU 연산 및 그래디언트 비활성화를 위함
-# - torch : cuda:0 강제 및 inference_mode 메모리 절약
+# - torch : cuda:0 또는 cpu 디바이스 선택 및 inference_mode 메모리 절약
 import torch
 
 # HuggingFace Cross-Encoder 리랭커 모델 로드를 위함
@@ -12,7 +12,7 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 # 환경 설정 참조를 위함
-# - Settings : 모델명, 배치 크기, 최대 토큰 길이, CONTEXT_K 조회
+# - Settings : 모델명, 배치 크기, 최대 토큰 길이, CONTEXT_K, allow_cpu_fallback 조회
 from app.core.settings import Settings
 
 # GPU·리랭커 장애 표준 예외 변환을 위함
@@ -20,18 +20,22 @@ from app.core.settings import Settings
 from app.services.errors import ServiceError
 
 """
-CUDA GPU(cuda:0) 전용 BAAI/bge-reranker-v2-m3 리랭커 모듈.
+BAAI/bge-reranker-v2-m3 리랭커 모듈.
 1차 벡터 검색 후보를 정밀 교차 인코딩(Cross-Encoding)하여 상위 CONTEXT_K건 선별.
 """
 
 
 class BgeReranker:
-    """bge-reranker-v2-m3 기반 GPU 교차 인코딩 리랭커."""
+    """bge-reranker-v2-m3 기반 교차 인코딩 리랭커."""
 
     def __init__(self, settings: Settings) -> None:
-        """CUDA GPU 확인 후 토크나이저와 시퀀스 분류 모델을 cuda:0에 로드."""
-        # CPU 폴백 시 지연 시간 폭증을 막기 위해 CUDA 미감지 즉시 차단
-        if not torch.cuda.is_available():
+        """디바이스 가용성 확인 후 토크나이저와 시퀀스 분류 모델을 대상 장치에 로드."""
+        if torch.cuda.is_available():
+            self._device = "cuda:0"
+        elif settings.allow_cpu_fallback:
+            # 비-CUDA PC에서 개발 실행을 허용하기 위한 조건부 CPU 선택
+            self._device = "cpu"
+        else:
             raise ServiceError(
                 code="GPU_UNAVAILABLE", message="리랭커 로드에 필요한 CUDA GPU 미감지"
             )
@@ -41,7 +45,7 @@ class BgeReranker:
             self._tokenizer = AutoTokenizer.from_pretrained(settings.reranker_model)
             self._model = AutoModelForSequenceClassification.from_pretrained(
                 settings.reranker_model
-            ).to("cuda:0")
+            ).to(self._device)
             self._model.eval()
         except Exception as exc:
             raise ServiceError(
@@ -68,7 +72,7 @@ class BgeReranker:
         scores: list[float] = []
 
         try:
-            # VRAM OOM 방지를 위해 설정된 RERANK_BATCH_SIZE 단위로 분할 추론
+            # 메모리 폭증을 막기 위해 설정된 RERANK_BATCH_SIZE 단위로 분할 추론
             with torch.inference_mode():
                 for start in range(0, len(pairs), batch_size):
                     batch_pairs = pairs[start : start + batch_size]
@@ -78,7 +82,7 @@ class BgeReranker:
                         truncation=True,
                         max_length=max_length,
                         return_tensors="pt",
-                    ).to("cuda:0")
+                    ).to(self._device)
                     logits = self._model(**inputs).logits.view(-1).float()
                     scores.extend(logits.detach().cpu().tolist())
         except Exception as exc:
@@ -100,6 +104,6 @@ class BgeReranker:
 
 """
 [설계 평가]
-- torch.inference_mode()와 소규모 배치(batch_size=2)로 GPU 메모리 사용량 안정화.
-- CPU 폴백을 원천 차단하고 실패 시 503 RERANKER_UNAVAILABLE로 명확히 보고.
+- 모델과 입력 텐서가 모두 동일한 self._device를 참조해 장치 불일치 런타임 오류 차단.
+- allow_cpu_fallback=False 기본값을 유지해 CUDA 전용 환경의 명세 검증과 충돌 없음.
 """
