@@ -114,21 +114,34 @@ class AppRuntime:
     def health(self) -> HealthResponse:
         """CUDA GPU 및 PostgreSQL 프리플라이트 상태를 점검해 헬스 응답 반환."""
         checks = run_preflight(self.settings)
-        return HealthResponse(status="ok", level="advanced", checks=checks)
+        fresh_vectors = int(checks.get("db", {}).get("fresh_vectors", 0))
+        return HealthResponse(
+            status="ok",
+            level="advanced",
+            db="ready",
+            gpu="cuda:0",
+            eligible_vectors=fresh_vectors,
+            llm="configured",
+            checks=checks,
+        )
 
     def ask(self, payload: AgentAskRequest, request_id: str) -> AgentAskResponse:
         """사용자 질문을 AgentRunner로 실행하고 결과를 RunStore에 저장 후 반환."""
         timer = LatencyTimer()
-        structured, tool_calls_log = self.agent_runner.run(
+        structured, tool_calls_log, tool_trace, validation = self.agent_runner.run(
             question=payload.question, category_code=payload.category_code
         )
+        sources = [{"report_id": rid} for rid in structured.source_ids]
         response = AgentAskResponse(
             request_id=request_id,
             status=structured.status,
             answer=structured.answer,
             source_ids=structured.source_ids,
+            sources=sources,
             status_report_ids=structured.status_report_ids,
+            tool_trace=tool_trace,
             tool_calls=tool_calls_log,
+            validation=validation,
             latency_ms=timer.elapsed_ms(),
         )
         # API-03 이력 조회 및 Postman r.metrics 검증을 위해 실행 지표와 함께 저장
