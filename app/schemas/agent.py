@@ -72,8 +72,19 @@ class AgentAskResponse(StructuredModelAnswer):
     """에이전트 질의 API의 최종 HTTP 응답 스키마."""
 
     request_id: str = Field(..., description="요청 추적용 고유 UUID")
+    sources: list[dict[str, Any]] = Field(
+        default_factory=list, description="Postman 계약 호환용 출처 객체 목록"
+    )
+    tool_trace: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="tool, tool_call_id, status(found/not_found)를 포함한 도구 실행 추적 목록",
+    )
     tool_calls: list[dict[str, Any]] = Field(
-        default_factory=list, description="실행 중 호출된 도구 이름·인수·결과 요약 기록"
+        default_factory=list, description="실행 중 호출된 도구 이름·인수 요약 기록"
+    )
+    validation: dict[str, Any] = Field(
+        default_factory=dict,
+        description="근거 정합성 및 필수 도구 관찰 여부 검증 플래그",
     )
     latency_ms: float = Field(..., ge=0.0, description="전체 요청 처리 시간(ms)")
 
@@ -85,6 +96,12 @@ class HealthResponse(BaseModel):
     level: Literal["basic", "intermediate", "advanced"] = Field(
         default="advanced", description="현재 구현 대상 난이도 식별자"
     )
+    db: str = Field(default="ready", description="PostgreSQL 준비 상태")
+    gpu: str = Field(default="cuda:0", description="CUDA GPU 디바이스 식별자")
+    eligible_vectors: int = Field(
+        default=0, ge=0, description="FRESH 조건을 만족하는 유효 벡터 수"
+    )
+    llm: str = Field(default="configured", description="LLM 설정 완료 상태")
     checks: dict[str, Any] = Field(
         default_factory=dict, description="세부 구성 요소(DB, GPU, 모델 등) 점검 결과"
     )
