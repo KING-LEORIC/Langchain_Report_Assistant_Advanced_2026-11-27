@@ -59,8 +59,8 @@ AGENT_SYSTEM_PROMPT = (
     "1. 보고서 내용·기술 요약·실험 결과·회의록 등 본문 근거가 필요하면 rag_search를 호출하라.\n"
     "2. 특정 보고서 ID의 진행 상태(status), 색인 상태(index_status), 리비전이 필요하면 lookup_status를 호출하라.\n"
     "3. 두 정보가 모두 필요한 복합 질문이면 두 도구를 모두 호출하라.\n"
-    "4. rag_search의 contexts나 lookup_status의 found=true 결과로 질문에 답할 수 있으면 반드시 status='completed'로 답하라.\n"
-    "5. lookup_status에서 found=false이거나 rag_search에서도 관련 근거가 전혀 없으면 status='insufficient_evidence', source_ids=[]로 답하라.\n"
+    "4. rag_search의 contexts에 관련 보고서 내용이 있거나 lookup_status에서 found=true가 나오면, 조회된 내용 범위 내에서 요약·답변하고 반드시 status='completed'로 답하라.\n"
+    "5. 조회된 보고서가 전혀 없거나(found=false) 질문과 완전히 무관한 주제일 때만 status='insufficient_evidence', source_ids=[]로 답하라.\n"
     "6. 도구 결과에 없는 보고서 ID는 절대 source_ids나 status_report_ids에 넣지 마라."
 )
 
