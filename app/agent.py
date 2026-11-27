@@ -72,7 +72,6 @@ class ReportAgentRunner:
         self._settings = settings
         self._model = ChatOpenAI(
             model=settings.llm_model,
-            temperature=0,
             timeout=settings.llm_timeout_seconds,
             max_retries=0,
         )

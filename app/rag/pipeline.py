@@ -128,7 +128,6 @@ class RAGPipeline:
         # 타임아웃·장애가 즉시 드러나도록 자동 재시도를 0으로 고정
         self._model = ChatOpenAI(
             model=settings.llm_model,
-            temperature=0,
             timeout=settings.llm_timeout_seconds,
             max_retries=0,
         )
