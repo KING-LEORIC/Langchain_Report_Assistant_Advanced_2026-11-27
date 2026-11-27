@@ -67,8 +67,8 @@ RAG_PROMPT = ChatPromptTemplate.from_messages(
             "너는 기술 보고서 검색 근거만 바탕으로 답하는 분석기다.\n"
             "규칙:\n"
             "1. 제공된 [근거 문서]에 있는 사실만 사용하여 질문에 답하라.\n"
-            "2. [근거 문서]에 질문과 관련된 내용이 하나라도 있으면 반드시 status='completed'로 답하고 해당 report_id를 source_ids에 포함하라.\n"
-            "3. [근거 문서]가 질문과 전혀 무관할 때만 status='insufficient_evidence', source_ids=[]로 답하라('incomplete' 금지).\n"
+            "2. [근거 문서]에 질문과 관련된 보고서가 1건이라도 있으면 조회된 내용을 바탕으로 요약하고 반드시 status='completed'와 해당 report_id를 source_ids에 포함하라.\n"
+            "3. [근거 문서]가 질문의 주제와 완전히 무관할 때만 status='insufficient_evidence', source_ids=[]로 답하라('incomplete' 금지).\n"
             '4. 반드시 JSON 객체만 출력하라: {{"status": "...", "answer": "...", "source_ids": [1, 2]}}',
         ),
         ("human", "질문: {question}\n\n[근거 문서]\n{context_block}"),
