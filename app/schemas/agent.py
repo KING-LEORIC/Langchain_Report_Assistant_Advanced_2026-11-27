@@ -90,8 +90,8 @@ class HealthResponse(BaseModel):
     )
 
 
-class ErrorResponse(BaseModel):
-    """전역 예외 핸들러가 반환하는 표준 에러 응답 스키마."""
+class ErrorDetail(BaseModel):
+    """전역 예외 핸들러가 반환하는 표준 에러 상세 스키마."""
 
     code: str = Field(..., description="SRS v1.1 표준 에러 코드")
     message: str = Field(..., description="사용자 및 개발자용 오류 설명")
@@ -99,6 +99,12 @@ class ErrorResponse(BaseModel):
     detail: dict[str, Any] = Field(
         default_factory=dict, description="디버깅에 필요한 부가 컨텍스트"
     )
+
+
+class ErrorResponse(BaseModel):
+    """Postman 및 SRS v1.1 규격에 맞춘 최상위 error 래퍼 응답 스키마."""
+
+    error: ErrorDetail = Field(..., description="표준 오류 상세 객체")
 
 
 """
