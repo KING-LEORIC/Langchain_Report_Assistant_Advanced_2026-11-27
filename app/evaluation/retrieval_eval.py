@@ -73,18 +73,28 @@ def evaluate_retrieval(
     after_mrr_sum = 0.0
 
     for case in cases:
-        case_id = case.get("id", "")
+        case_id = str(case.get("case_id") or case.get("id") or "")
         # gold.json 스키마 변형(query 또는 question)에 모두 대응하고 빈 케이스는 건너뜀
         query = (case.get("query") or case.get("question") or "").strip()
         if not query:
             continue
         category_code = case.get("category_code")
-        raw_expected = (
-            case.get("expected_report_ids")
-            or case.get("expected_ids")
-            or case.get("gold_report_ids")
-            or []
-        )
+
+        # grades 딕셔너리 또는 evidence 목록에서 정답 report_id 추출
+        grades = case.get("grades") or {}
+        if isinstance(grades, dict) and grades:
+            raw_expected = [int(k) for k, v in grades.items() if int(v) > 0]
+        elif case.get("evidence"):
+            raw_expected = [
+                int(e["report_id"]) for e in case["evidence"] if "report_id" in e
+            ]
+        else:
+            raw_expected = (
+                case.get("expected_report_ids")
+                or case.get("expected_ids")
+                or case.get("gold_report_ids")
+                or []
+            )
         expected_ids = {int(x) for x in raw_expected}
 
         before_candidates = retriever.retrieve(query=query, category_code=category_code)
