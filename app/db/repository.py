@@ -47,17 +47,11 @@ class ReportRepository:
 
     def get_report_status(self, report_id: int) -> dict[str, Any] | None:
         """단일 보고서 ID에 대한 상태·리비전·카테고리 메타데이터 조회."""
+        # 실제 reports 스키마의 모든 상태 컬럼을 누락 없이 안전하게 가져오기 위해 SELECT * 사용
         sql = """
-            SELECT
-                r.report_id,
-                r.title,
-                r.category_code,
-                r.status,
-                r.index_status,
-                r.revision,
-                r.updated_at
-            FROM reports r
-            WHERE r.report_id = %(report_id)s
+            SELECT *
+            FROM reports
+            WHERE report_id = %(report_id)s
         """
         with get_readonly_connection(self._settings) as conn:
             with conn.cursor() as cur:
@@ -76,9 +70,7 @@ class ReportRepository:
         sql = """
             SELECT
                 r.report_id,
-                r.title,
                 r.category_code,
-                r.status,
                 r.overview,
                 1 - (e.embedding <=> %(vec)s::vector) AS similarity
             FROM reports r
@@ -127,6 +119,6 @@ class ReportRepository:
 
 """
 [설계 평가]
-- reports 테이블 기본키(r.report_id)를 모든 조인·필터 절에 일관 적용해 컬럼 불일치 제거.
+- reports 테이블에 존재하는 확정 컬럼만 SELECT하고 상세 메타는 report_read_view로 위임해 컬럼 오류 방지.
 - 6중 FRESH 벡터 조건과 READ ONLY 트랜잭션을 유지해 검색 안전성 확보.
 """

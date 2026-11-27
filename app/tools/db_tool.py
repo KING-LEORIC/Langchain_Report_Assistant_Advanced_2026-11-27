@@ -45,17 +45,8 @@ def create_lookup_status_tool(repository: ReportRepository) -> Any:
             }
             return dumps(payload, ensure_ascii=False, default=str)
 
-        payload = {
-            "tool_call_id": tool_call_id,
-            "found": True,
-            "report_id": row["report_id"],
-            "title": row["title"],
-            "category_code": row["category_code"],
-            "status": row["status"],
-            "index_status": row["index_status"],
-            "revision": row["revision"],
-            "updated_at": row["updated_at"],
-        }
+        # 스키마 컬럼명 차이에 영향받지 않도록 조회된 실제 행 필드를 그대로 병합 반환
+        payload = {"tool_call_id": tool_call_id, "found": True, **row}
         return dumps(payload, ensure_ascii=False, default=str)
 
     return lookup_status
@@ -64,5 +55,5 @@ def create_lookup_status_tool(repository: ReportRepository) -> Any:
 """
 [설계 평가]
 - InjectedToolCallId를 사용해 LLM이 tool_call_id를 잘못 생성할 여지를 원천 제거.
-- 미존재 ID를 오류가 아닌 found=False 구조화 응답으로 내려 에이전트의 우아한 폴백 유도.
+- **row 병합으로 DB 스키마 변화에도 KeyError 없이 모든 상태 메타데이터 전달.
 """
