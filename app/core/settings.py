@@ -15,7 +15,7 @@ from app.services.errors import ServiceError
 
 """
 애플리케이션 전역 환경 설정을 로드하고 유효성을 검증하는 모듈.
-SRS v1.1의 Advanced 난이도 기준 및 모델·타임아웃·예산 파라미터를 불변 객체로 제공.
+SRS v1.1의 Advanced 난이도 기준 및 모델·타임아웃·예산·디바이스 폴백 파라미터를 불변 객체로 제공.
 """
 
 
@@ -64,6 +64,7 @@ class Settings:
     max_model_calls: int
     langsmith_tracing: bool
     langchain_tracing_v2: bool
+    allow_cpu_fallback: bool
 
 
 def load_settings() -> Settings:
@@ -111,11 +112,12 @@ def load_settings() -> Settings:
         max_model_calls=_parse_int("MAX_MODEL_CALLS", 14),
         langsmith_tracing=_parse_bool("LANGSMITH_TRACING", False),
         langchain_tracing_v2=_parse_bool("LANGCHAIN_TRACING_V2", False),
+        allow_cpu_fallback=_parse_bool("ALLOW_CPU_FALLBACK", False),
     )
 
 
 """
 [설계 평가]
-- frozen=True 데이터클래스로 설정 불변성을 보장해 실행 중 의도치 않은 값 변경 차단.
-- 모든 숫자·필수 문자열 검증을 기동 시점에 완료하여 런타임 도중 설정 오류 노출 방지.
+- allow_cpu_fallback 기본값을 False로 두어 별도 설정 없이는 기존 CUDA 필수 정책 유지.
+- frozen=True 데이터클래스로 런타임 설정 변조 원천 차단.
 """
