@@ -16,15 +16,19 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 # 에이전트 및 헬스 체크 라우터 등록을 위함
-# - router : /health, /api/v1/agent/ask 엔드포인트 바인딩
+# - router : /health, /api/v1/agent/ask, /api/v1/agent/runs/{request_id} 바인딩
 from app.api.agent import router as agent_router
+
+# RAG 디버그 라우터 등록을 위함
+# - router : /api/v1/rag/debug 바인딩
+from app.api.rag import router as rag_router
 
 # 애플리케이션 Runtime 컨테이너 초기화를 위함
 # - AppRuntime : lifespan 시작 시 app.state.runtime에 바인딩
 from app.core.runtime import AppRuntime
 
 # 표준 에러 응답 직렬화를 위함
-# - ErrorResponse : 422/500/503 등 모든 오류 응답의 단일 포맷 보장
+# - ErrorResponse : 422/404/500/503 등 모든 오류 응답의 단일 포맷 보장
 from app.schemas.agent import ErrorResponse
 
 # 서비스 도메인 예외 처리를 위함
@@ -37,7 +41,7 @@ from app.services.metrics import generate_request_id
 
 """
 FastAPI 애플리케이션 엔트리포인트 모듈.
-lifespan 수명 주기 관리, 전역 예외 핸들러(ServiceError·422), 라우터 조립 담당.
+lifespan 수명 주기 관리, 전역 예외 핸들러(ServiceError·422), Agent·RAG 라우터 조립 담당.
 """
 
 
@@ -81,10 +85,11 @@ async def handle_validation_error(
 
 
 app.include_router(agent_router)
+app.include_router(rag_router)
 
 
 """
 [설계 평가]
 - 모든 예외가 단일 ErrorResponse 스키마로 수렴하여 클라이언트 파싱 일관성 확보.
-- lifespan과 app.state 기반 의존성 주입으로 전역 상태 오염 없이 테스트 실행 가능.
+- Agent 라우터와 RAG 디버그 라우터를 명확히 분리해 관심사 분리 유지.
 """
