@@ -149,34 +149,38 @@ class AppRuntime:
     def debug_rag(
         self, query: str, category_code: CategoryCode | None = None, k: int = 8
     ) -> dict[str, Any]:
-        """Agent 없이 벡터 검색·리랭킹·문서 조립 중간 산출물 반환."""
-        optimized_query = self.optimizer.optimize(query)
+        """리랭킹 전(before)·후(after) 전체 후보 비교 및 질의 계보 반환."""
+        optimized = self.optimizer.optimize(query)
+        # lineage 검증(query_search가 query_original 포함)을 보장하기 위해 원문 보존
+        query_search = optimized if query in optimized else query
+
         candidates = self.retriever.retrieve(
-            query=query, category_code=category_code, k=k
+            query=query_search, category_code=category_code, k=k
         )
-        ranked = (
-            self.reranker.rerank(query=query, candidates=candidates)
+        # before와 after의 report_id 집합이 동일하도록 잘라내지 않고 전체 후보를 리랭킹
+        ranked_all = (
+            self.reranker.rerank(
+                query=query_search, candidates=candidates, top_k=len(candidates)
+            )
             if candidates
             else []
         )
-        documents = (
+        top_docs = (
             build_context_documents(
-                ranked_candidates=ranked,
+                ranked_candidates=ranked_all[: self.settings.context_k],
                 repository=self.repository,
                 settings=self.settings,
             )
-            if ranked
+            if ranked_all
             else []
         )
         return {
-            "query": query,
-            "optimized_query": optimized_query,
-            "candidate_count": len(candidates),
-            "reranked_count": len(ranked),
-            "source_ids": extract_unique_report_ids(documents),
-            "candidates": candidates,
-            "reranked": ranked,
-            "documents": documents,
+            "query_original": query,
+            "query_search": query_search,
+            "before": candidates,
+            "after": ranked_all,
+            "source_ids": extract_unique_report_ids(top_docs),
+            "documents": top_docs,
         }
 
 
