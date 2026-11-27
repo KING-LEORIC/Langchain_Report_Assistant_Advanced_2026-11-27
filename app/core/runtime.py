@@ -131,12 +131,18 @@ class AppRuntime:
             tool_calls=tool_calls_log,
             latency_ms=timer.elapsed_ms(),
         )
-        # API-03 이력 조회를 위해 정상 완료된 요청 결과를 인메모리 저장소에 기록
+        # API-03 이력 조회 및 Postman r.metrics 검증을 위해 실행 지표와 함께 저장
         self.run_store.save(
             request_id,
             {
                 "question": payload.question,
                 "category_code": payload.category_code,
+                "metrics": {
+                    "latency_ms": response.latency_ms,
+                    "tool_call_count": len(tool_calls_log),
+                    "source_count": len(response.source_ids),
+                    "status_report_count": len(response.status_report_ids),
+                },
                 **response.model_dump(),
             },
         )
