@@ -1,9 +1,13 @@
+# 정적 타입 명세를 위함
+# - Any : 실행 이력 상세 딕셔너리 반환 타입 명시
+from typing import Any
+
 # FastAPI 라우터 및 요청 컨텍스트 접근을 위함
 # - APIRouter : 도메인별 엔드포인트를 모듈화하여 main.py에 결합
 # - Request : app.state에 주입된 Runtime 및 요청별 request_id 추출
 from fastapi import APIRouter, Request
 
-# 임시·최종 Runtime 타입 힌트 명세를 위함
+# 최종 Runtime 타입 힌트 명세를 위함
 # - AppRuntime : app.state.runtime의 정적 타입 명시
 from app.core.runtime import AppRuntime
 
@@ -13,12 +17,12 @@ from app.core.runtime import AppRuntime
 # - HealthResponse : 헬스 체크 응답 모델
 from app.schemas.agent import AgentAskRequest, AgentAskResponse, HealthResponse
 
-# 요청 ID 생성 및 지연 시간 폴백 계측을 위함
+# 요청 ID 생성 계측을 위함
 # - generate_request_id : 미들웨어 누락 시에도 안전한 UUID 확보
 from app.services.metrics import generate_request_id
 
 """
-기본 헬스 체크(API-00)와 에이전트 질의(API-01) HTTP 엔드포인트를 제공하는 라우터 모듈.
+헬스 체크(API-00), 에이전트 질의(API-01), 실행 이력 조회(API-03) 엔드포인트를 제공하는 라우터 모듈.
 비즈니스 로직을 직접 처리하지 않고 app.state.runtime에 위임하여 테스트 용이성 확보.
 """
 
@@ -46,8 +50,15 @@ def ask_agent(payload: AgentAskRequest, request: Request) -> AgentAskResponse:
     return runtime.ask(payload=payload, request_id=request_id)
 
 
+@router.get("/api/v1/agent/runs/{request_id}")
+def get_agent_run(request_id: str, request: Request) -> dict[str, Any]:
+    """저장된 에이전트 실행 이력을 request_id로 조회하는 Advanced 전용 엔드포인트."""
+    runtime = _get_runtime(request)
+    return runtime.get_run(request_id)
+
+
 """
 [설계 평가]
 - 엔드포인트 함수를 얇게(Thin Controller) 유지하여 단위 테스트 및 Runtime 교체 비용 최소화.
-- FastAPI response_model 선언으로 반환 스키마 누락 시 런타임 검증 보장.
+- 미존재 request_id는 Runtime과 RunStore가 404 RUN_NOT_FOUND로 일관 처리.
 """
