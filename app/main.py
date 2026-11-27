@@ -28,8 +28,9 @@ from app.api.rag import router as rag_router
 from app.core.runtime import AppRuntime
 
 # 표준 에러 응답 직렬화를 위함
-# - ErrorResponse : 422/404/500/503 등 모든 오류 응답의 단일 포맷 보장
-from app.schemas.agent import ErrorResponse
+# - ErrorDetail : 에러 코드·메시지·요청 ID·상세 정보 구조화
+# - ErrorResponse : 최상위 error 키로 감싼 단일 에러 포맷 보장
+from app.schemas.agent import ErrorDetail, ErrorResponse
 
 # 서비스 도메인 예외 처리를 위함
 # - ServiceError : 비즈니스 및 인프라 오류를 표준 코드로 매핑
@@ -60,10 +61,12 @@ app = FastAPI(
 
 @app.exception_handler(ServiceError)
 async def handle_service_error(request: Request, exc: ServiceError) -> JSONResponse:
-    """도메인 및 인프라 예외(ServiceError)를 SRS v1.1 표준 JSON 응답으로 변환."""
+    """도메인 및 인프라 예외(ServiceError)를 error 래퍼가 포함된 표준 JSON 응답으로 변환."""
     request_id = getattr(request.state, "request_id", None) or generate_request_id()
     body = ErrorResponse(
-        code=exc.code, message=exc.message, request_id=request_id, detail=exc.detail
+        error=ErrorDetail(
+            code=exc.code, message=exc.message, request_id=request_id, detail=exc.detail
+        )
     )
     return JSONResponse(status_code=exc.status_code, content=body.model_dump())
 
@@ -76,10 +79,12 @@ async def handle_validation_error(
     request_id = getattr(request.state, "request_id", None) or generate_request_id()
     # 내부 스택 트레이스 노출을 막고 검증 실패 필드 목록만 detail에 포함
     body = ErrorResponse(
-        code="VALIDATION_ERROR",
-        message="요청 입력값 검증 실패",
-        request_id=request_id,
-        detail={"errors": exc.errors()},
+        error=ErrorDetail(
+            code="VALIDATION_ERROR",
+            message="요청 입력값 검증 실패",
+            request_id=request_id,
+            detail={"errors": exc.errors()},
+        )
     )
     return JSONResponse(status_code=422, content=body.model_dump())
 
@@ -90,6 +95,6 @@ app.include_router(rag_router)
 
 """
 [설계 평가]
-- 모든 예외가 단일 ErrorResponse 스키마로 수렴하여 클라이언트 파싱 일관성 확보.
+- 모든 예외가 {"error": {"code": ...}} 단일 래퍼로 수렴해 Postman 및 클라이언트 파싱 일관성 확보.
 - Agent 라우터와 RAG 디버그 라우터를 명확히 분리해 관심사 분리 유지.
 """
