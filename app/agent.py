@@ -58,9 +58,10 @@ AGENT_SYSTEM_PROMPT = (
     "도구 사용 규칙:\n"
     "1. 보고서 내용·기술 요약·실험 결과·회의록 등 본문 근거가 필요하면 rag_search를 호출하라.\n"
     "2. 특정 보고서 ID의 진행 상태(status), 색인 상태(index_status), 리비전이 필요하면 lookup_status를 호출하라.\n"
-    "3. 두 정보가 모두 필요한 복합 질문이면 두 도구를 함께 활용하라.\n"
-    "4. 도구 결과에 없는 보고서 ID를 절대 source_ids나 status_report_ids에 넣지 마라.\n"
-    "5. 근거가 불충분하거나 질문과 일치하는 자료가 없으면 status='insufficient_evidence'로 답하라."
+    "3. 두 정보가 모두 필요한 복합 질문이면 두 도구를 모두 호출하라.\n"
+    "4. rag_search의 contexts나 lookup_status의 found=true 결과로 질문에 답할 수 있으면 반드시 status='completed'로 답하라.\n"
+    "5. lookup_status에서 found=false이거나 rag_search에서도 관련 근거가 전혀 없으면 status='insufficient_evidence', source_ids=[]로 답하라.\n"
+    "6. 도구 결과에 없는 보고서 ID는 절대 source_ids나 status_report_ids에 넣지 마라."
 )
 
 
@@ -89,49 +90,78 @@ class ReportAgentRunner:
 
     def _extract_execution_trace(
         self, messages: list[Any]
-    ) -> tuple[list[dict[str, Any]], set[int], set[int]]:
-        """메시지 히스토리에서 도구 호출 로그와 실제 관찰된 보고서 ID 집합 추출."""
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], set[int], set[int]]:
+        """메시지 히스토리에서 도구 호출 로그, tool_trace, 관찰된 보고서 ID 집합 추출."""
         tool_calls_log: list[dict[str, Any]] = []
+        args_by_call_id: dict[str, dict[str, Any]] = {}
+        tool_trace: list[dict[str, Any]] = []
         observed_rag_ids: set[int] = set()
         observed_status_ids: set[int] = set()
 
         for msg in messages:
             if isinstance(msg, AIMessage) and msg.tool_calls:
                 for tc in msg.tool_calls:
+                    call_id = str(tc.get("id") or "")
+                    args = tc.get("args", {})
+                    args_by_call_id[call_id] = args
                     tool_calls_log.append(
-                        {
-                            "id": tc.get("id"),
-                            "name": tc.get("name"),
-                            "args": tc.get("args", {}),
-                        }
+                        {"id": call_id, "name": tc.get("name"), "args": args}
                     )
             elif isinstance(msg, ToolMessage):
                 try:
                     data = loads(str(msg.content))
                 except Exception:
-                    continue
+                    data = {}
 
-                if msg.name == "rag_search":
-                    for rid in data.get("source_ids", []):
-                        if isinstance(rid, int):
-                            observed_rag_ids.add(rid)
-                    for ctx in data.get("contexts", []):
-                        rid = ctx.get("report_id")
-                        if isinstance(rid, int):
-                            observed_rag_ids.add(rid)
-                elif msg.name == "lookup_status" and data.get("found"):
-                    rid = data.get("report_id")
-                    if isinstance(rid, int):
-                        observed_status_ids.add(rid)
+                call_id = str(
+                    getattr(msg, "tool_call_id", "") or data.get("tool_call_id") or ""
+                )
+                tool_name = str(msg.name or "")
+                trace_status = "not_found"
 
-        return tool_calls_log, observed_rag_ids, observed_status_ids
+                if tool_name == "rag_search":
+                    rag_ids = [
+                        rid
+                        for rid in data.get("source_ids", [])
+                        if isinstance(rid, int)
+                    ]
+                    ctx_ids = [
+                        ctx.get("report_id")
+                        for ctx in data.get("contexts", [])
+                        if isinstance(ctx.get("report_id"), int)
+                    ]
+                    observed_rag_ids.update(rag_ids)
+                    observed_rag_ids.update(ctx_ids)
+                    if rag_ids or ctx_ids:
+                        trace_status = "found"
+                elif tool_name == "lookup_status":
+                    if data.get("found"):
+                        trace_status = "found"
+                        rid = data.get("report_id")
+                        if isinstance(rid, int):
+                            observed_status_ids.add(rid)
+
+                tool_trace.append(
+                    {
+                        "tool": tool_name,
+                        "tool_call_id": call_id,
+                        "status": trace_status,
+                        "args": args_by_call_id.get(call_id, {}),
+                    }
+                )
+
+        return tool_calls_log, tool_trace, observed_rag_ids, observed_status_ids
 
     def run(
         self, question: str, category_code: CategoryCode | None = None
-    ) -> tuple[StructuredModelAnswer, list[dict[str, Any]]]:
-        """사용자 질문을 에이전트에 전달하고 검증된 StructuredModelAnswer와 도구 로그 반환."""
+    ) -> tuple[
+        StructuredModelAnswer,
+        list[dict[str, Any]],
+        list[dict[str, Any]],
+        dict[str, Any],
+    ]:
+        """사용자 질문을 에이전트에 전달하고 검증된 응답·로그·추적 정보 반환."""
         user_content = question
-        # 요청에 category_code가 명시되면 에이전트가 rag_search 호출 시 해당 필터를 쓰도록 힌트 부여
         if category_code is not None:
             user_content = f"[카테고리 필터: {category_code}] {question}"
 
@@ -140,11 +170,9 @@ class ReportAgentRunner:
                 {"messages": [{"role": "user", "content": user_content}]}
             )
         except ServiceError:
-            # 하위 도구(DB, GPU, 임베딩, 리랭커)에서 발생한 표준 ServiceError는 그대로 전파
             raise
         except Exception as exc:
             err_msg = str(exc).lower()
-            # 미들웨어 호출 한도 초과 시 SRS 명세에 따라 503 EXECUTION_LIMIT 반환
             if "limit" in err_msg or "call limit" in err_msg:
                 raise ServiceError(
                     code="EXECUTION_LIMIT",
@@ -164,7 +192,6 @@ class ReportAgentRunner:
             ) from exc
 
         structured = result.get("structured_response")
-        # ProviderStrategy 결과 객체가 비어 있으면 AIMessage 재파싱 없이 계약 오류로 처리
         if not isinstance(structured, StructuredModelAnswer):
             raise ServiceError(
                 code="OUTPUT_CONTRACT_ERROR",
@@ -172,7 +199,7 @@ class ReportAgentRunner:
             )
 
         messages = result.get("messages", [])
-        tool_calls_log, observed_rag_ids, observed_status_ids = (
+        tool_calls_log, tool_trace, observed_rag_ids, observed_status_ids = (
             self._extract_execution_trace(messages)
         )
 
@@ -181,7 +208,11 @@ class ReportAgentRunner:
             observed_rag_ids=observed_rag_ids,
             observed_status_ids=observed_status_ids,
         )
-        return validated, tool_calls_log
+        validation = {
+            "citations_match_context": True,
+            "required_tools_observed": len(tool_trace) > 0,
+        }
+        return validated, tool_calls_log, tool_trace, validation
 
 
 """
