@@ -1,5 +1,5 @@
 # CUDA GPU 가용성 및 추론 컨텍스트 확인을 위함
-# - torch : CPU 폴백 차단 및 cuda:0 강제 검증
+# - torch : cuda:0 또는 허용 시 cpu 디바이스 동적 선택
 import torch
 
 # HuggingFace SentenceTransformer 임베딩 모델 로드를 위함
@@ -7,7 +7,7 @@ import torch
 from sentence_transformers import SentenceTransformer
 
 # 환경 설정 참조를 위함
-# - Settings : EMBEDDING_MODEL 이름 조회
+# - Settings : EMBEDDING_MODEL 이름 및 allow_cpu_fallback 조회
 from app.core.settings import Settings
 
 # GPU·임베딩 장애 표준 예외 변환을 위함
@@ -15,8 +15,8 @@ from app.core.settings import Settings
 from app.services.errors import ServiceError
 
 """
-CUDA GPU(cuda:0) 전용 E5 임베딩 생성 모듈.
-CPU 폴백을 금지하며 E5 모델 규격인 'query: ' 접두사와 정규화를 강제.
+E5 임베딩 생성 모듈.
+기본적으로 CUDA GPU(cuda:0)를 강제하며, allow_cpu_fallback=True일 때만 CPU 추론 허용.
 """
 
 
@@ -24,16 +24,22 @@ class E5Embedder:
     """intfloat/multilingual-e5-small 기반 질의어 임베딩 인코더."""
 
     def __init__(self, settings: Settings) -> None:
-        """GPU 가용성 확인 후 cuda:0에 임베딩 모델 로드."""
-        # CPU 폴백으로 인한 극심한 지연 및 명세 위반을 막기 위해 즉시 차단
-        if not torch.cuda.is_available():
+        """디바이스 가용성 확인 후 선택된 장치(cuda:0 또는 cpu)에 임베딩 모델 로드."""
+        if torch.cuda.is_available():
+            self._device = "cuda:0"
+        elif settings.allow_cpu_fallback:
+            # 비-CUDA PC에서 개발 실행을 허용하기 위한 조건부 CPU 선택
+            self._device = "cpu"
+        else:
             raise ServiceError(
                 code="GPU_UNAVAILABLE",
                 message="임베딩 모델 로드에 필요한 CUDA GPU 미감지",
             )
 
         try:
-            self._model = SentenceTransformer(settings.embedding_model, device="cuda:0")
+            self._model = SentenceTransformer(
+                settings.embedding_model, device=self._device
+            )
         except Exception as exc:
             raise ServiceError(
                 code="EMBEDDING_UNAVAILABLE",
@@ -66,6 +72,6 @@ class E5Embedder:
 
 """
 [설계 평가]
-- device='cuda:0' 명시와 사전 가용성 검증으로 CPU 폴백 가능성 원천 차단.
-- 'query: ' 접두사와 L2 정규화를 인코더 내부에 캡슐화해 호출부의 실수 방지.
+- allow_cpu_fallback=False일 때는 기존처럼 CUDA 미감지 시 즉시 차단해 명세 준수.
+- self._device 속성으로 모델 로드 장치를 일관 관리해 이식성 확보.
 """
