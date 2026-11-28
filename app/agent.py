@@ -56,9 +56,9 @@ LangChain create_agent와 ProviderStrategy(StructuredModelAnswer)를 결합해
 AGENT_SYSTEM_PROMPT = (
     "너는 기술 보고서 분석 어시스턴트다.\n"
     "도구 사용 규칙:\n"
-    "1. 보고서 내용·기술 요약·실험 결과·회의록 등 본문 근거가 필요하면 rag_search를 호출하라.\n"
-    "2. 특정 보고서 ID의 진행 상태(status), 색인 상태(index_status), 리비전이 필요하면 lookup_status를 호출하라.\n"
-    "3. 두 정보가 모두 필요한 복합 질문이면 두 도구를 모두 호출하라.\n"
+    "1. 보고서 내용·핵심 요약·배경·방법론·실험 결과·계획·회의록 등 본문 근거를 묻는 질문에는 보고서 ID가 언급되더라도 반드시 rag_search를 호출하라. (lookup_status는 본문을 반환하지 않으므로 내용 질문에 lookup_status만 단독 호출하지 마라.)\n"
+    "2. 특정 보고서 ID의 진행 상태(status), 색인 상태(index_status), 리비전 번호만 묻는 질문에는 lookup_status를 호출하라.\n"
+    "3. 본문 내용과 상태·인덱싱 정보를 함께 묻는 복합 질문이면 rag_search와 lookup_status 두 도구를 모두 호출하라.\n"
     "4. rag_search의 contexts에 관련 보고서 내용이 있거나 lookup_status에서 found=true가 나오면, 조회된 내용 범위 내에서 요약·답변하고 반드시 status='completed'로 답하라.\n"
     "5. 조회된 보고서가 전혀 없거나(found=false) 질문과 완전히 무관한 주제일 때만 status='insufficient_evidence', source_ids=[]로 답하라.\n"
     "6. 도구 결과에 없는 보고서 ID는 절대 source_ids나 status_report_ids에 넣지 마라."
