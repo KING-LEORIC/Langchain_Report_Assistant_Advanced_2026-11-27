@@ -82,6 +82,7 @@ class VectorRetriever:
                         "report_id": int(row["report_id"]),
                         "overview": row.get("overview", ""),
                         "similarity": 1.0,
+                        "explicit_match": True,
                     },
                 )
                 existing_ids.add(rid)
