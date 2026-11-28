@@ -65,33 +65,33 @@ class VectorRetriever:
             query_embedding=query_vec, category_code=category_code, k=top_k
         )
 
-        # 벡터 모델이 '63' 같은 숫자 ID를 의미적으로 놓치는 한계를 보완하기 위한 하이브리드 보강
-        existing_ids = {int(c["report_id"]) for c in candidates}
+        # 벡터 모델이 '63' 같은 숫자 ID를 놓치거나 리랭커에서 밀리는 한계를 보완
+        candidates_by_id = {int(c["report_id"]): c for c in candidates}
         explicit_ids = [
             int(m) for m in findall(self._EXPLICIT_ID_PATTERN, query, flags=IGNORECASE)
         ]
         for rid in explicit_ids:
-            if rid in existing_ids:
+            if rid in candidates_by_id:
+                # 1차 후보에 이미 있더라도 리랭킹 후 탈락하지 않도록 explicit_match 표시
+                candidates_by_id[rid]["explicit_match"] = True
                 continue
             row = self._repository.get_report_status(rid)
             # ready 상태인 실제 보고서만 후보에 추가해 미존재 ID(999999)나 미색인 문서 유입 차단
             if row is not None and row.get("index_status") == "ready":
-                candidates.insert(
-                    0,
-                    {
-                        "report_id": int(row["report_id"]),
-                        "overview": row.get("overview", ""),
-                        "similarity": 1.0,
-                        "explicit_match": True,
-                    },
-                )
-                existing_ids.add(rid)
+                new_candidate = {
+                    "report_id": int(row["report_id"]),
+                    "overview": row.get("overview", ""),
+                    "similarity": 1.0,
+                    "explicit_match": True,
+                }
+                candidates.insert(0, new_candidate)
+                candidates_by_id[rid] = new_candidate
 
         return candidates
 
 
 """
 [설계 평가]
-- 순수 벡터 검색의 약점인 숫자 ID 매칭 누락을 경량 하이브리드 보강으로 해결.
+- 순수 벡터 검색의 약점인 숫자 ID 매칭 누락과 리랭커 탈락을 explicit_match 플래그로 해결.
 - ready 상태 검증을 거쳐 미존재 ID나 미색인 보고서가 후보에 섞이지 않도록 안전하게 통제.
 """
