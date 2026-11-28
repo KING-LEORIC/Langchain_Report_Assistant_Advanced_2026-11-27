@@ -162,6 +162,15 @@ class RAGPipeline:
             }
 
         ranked = self._reranker.rerank(query=query, candidates=candidates)
+        # 질의에 명시된 보고서 ID가 리랭커 점수에 밀려 top_k(3)에서 탈락하지 않도록 최상단 보존
+        explicit_hits = [c for c in candidates if c.get("explicit_match")]
+        if explicit_hits:
+            explicit_ids_set = {int(c["report_id"]) for c in explicit_hits}
+            ranked = (
+                explicit_hits
+                + [c for c in ranked if int(c["report_id"]) not in explicit_ids_set]
+            )[: self._settings.context_k]
+
         documents = build_context_documents(
             ranked_candidates=ranked,
             repository=self._repository,
@@ -209,6 +218,6 @@ class RAGPipeline:
 
 """
 [설계 평가]
-- 검색 결과 0건 시 조기 반환(Short-circuit)하여 무의미한 리랭킹 및 LLM 비용 차단.
+- 명시적 ID 후보(explicit_match)를 리랭킹 후에도 CONTEXT_K 최상단에 보존해 숫자 ID 누락 방지.
 - parse_answer()에서 허용된 상태('completed'·'insufficient_evidence')와 실제 컨텍스트 ID만 통과시켜 안전성 확보.
 """
