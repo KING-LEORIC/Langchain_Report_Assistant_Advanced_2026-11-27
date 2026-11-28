@@ -19,7 +19,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda
 
 # OpenAI 호환 Chat 모델 호출을 위함
-# - ChatOpenAI : max_retries=0 및 타임아웃 설정 적용
+# - ChatOpenAI : max_retries=0 및 타임아웃 설정으로 실패 즉시 노출
 from langchain_openai import ChatOpenAI
 
 # 환경 설정 참조를 위함
@@ -170,6 +170,7 @@ class RAGPipeline:
                 explicit_hits
                 + [c for c in ranked if int(c["report_id"]) not in explicit_ids_set]
             )[: self._settings.context_k]
+
         documents = build_context_documents(
             ranked_candidates=ranked,
             repository=self._repository,
@@ -217,6 +218,6 @@ class RAGPipeline:
 
 """
 [설계 평가]
-- 검색 결과 0건 시 조기 반환(Short-circuit)하여 무의미한 GPU 리랭킹 및 LLM 비용 차단.
+- 명시적 ID 후보(explicit_match)를 리랭킹 후에도 CONTEXT_K 최상단에 보존해 숫자 ID 누락 방지.
 - parse_answer()에서 허용된 상태('completed'·'insufficient_evidence')와 실제 컨텍스트 ID만 통과시켜 안전성 확보.
 """
